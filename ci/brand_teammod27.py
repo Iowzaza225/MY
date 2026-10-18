@@ -253,6 +253,14 @@ replacement='''    void *adapter = NULL;
     tunnel = YES; // Successful native tunnel and authenticated RSD handshake.
 '''
 btext=btext.replace(original,replacement,1)
+# Objective-C ARC does not permit goto to jump over a __strong local initializer.
+# Keep the diagnostic variable at the beginning of the method's lifetime.
+assert btext.count('    NSString *detail = @"";') == 1
+btext=btext.replace('    NSString *detail = @"";',
+                    '    NSString *detail = @"";\\n    NSString *remoteError = @"";'.replace('\\n','\\n'), 1)
+assert btext.count('    NSString *remoteError = @"";') == 2
+btext=btext.replace('    NSString *remoteError = @"";\\n    if (error || !adapter || !handshake)'.replace('\\n','\\n'),
+                    '    remoteError = @"";\\n    if (error || !adapter || !handshake)'.replace('\\n','\\n'),1)
 bridge.write_text(btext)
 
 # Remove one stale old-brand instructional message without changing FFI.
