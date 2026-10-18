@@ -118,80 +118,8 @@ jobs:
           # Verifies that the RPPairing host and RSD bridge are actually linked.
           xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _al_pairing_run_host$'
           xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _al_pairing_result_free$'
-          xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _tunnel_create_remotexpc_multihost          mkdir -p ipa/Payload
-          cp -R "$APP" ipa/Payload/
-          (cd ipa && zip -qry "$GITHUB_WORKSPACE/TEAMMOD27-v1.0.0-build1-unsigned.ipa" Payload)
-          unzip -tq TEAMMOD27-v1.0.0-build1-unsigned.ipa
-
-      - name: Upload TEAMMOD27 IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: TEAMMOD27-unsigned-IPA
-          path: TEAMMOD27-v1.0.0-build1-unsigned.ipa
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload standalone prepared sources
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          (cd "$SOURCE_ROOT" && zip -q -r "$GITHUB_WORKSPACE/TEAMMOD27-Prepared-Source.zip" . -x '*/.DS_Store' '*/__MACOSX/*')
-
-      - name: Store TEAMMOD27 source archive
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: TEAMMOD27-Prepared-Source
-          path: TEAMMOD27-Prepared-Source.zip
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload compiler log on error
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: TEAMMOD27-Failure-Log
-          path: teammod27-build.log
-          if-no-files-found: ignore
-
-          xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _tunnel_create_rppairing_multihost          mkdir -p ipa/Payload
-          cp -R "$APP" ipa/Payload/
-          (cd ipa && zip -qry "$GITHUB_WORKSPACE/TEAMMOD27-v1.0.0-build1-unsigned.ipa" Payload)
-          unzip -tq TEAMMOD27-v1.0.0-build1-unsigned.ipa
-
-      - name: Upload TEAMMOD27 IPA
-        uses: actions/upload-artifact@v4
-        with:
-          name: TEAMMOD27-unsigned-IPA
-          path: TEAMMOD27-v1.0.0-build1-unsigned.ipa
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload standalone prepared sources
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          (cd "$SOURCE_ROOT" && zip -q -r "$GITHUB_WORKSPACE/TEAMMOD27-Prepared-Source.zip" . -x '*/.DS_Store' '*/__MACOSX/*')
-
-      - name: Store TEAMMOD27 source archive
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: TEAMMOD27-Prepared-Source
-          path: TEAMMOD27-Prepared-Source.zip
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload compiler log on error
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: TEAMMOD27-Failure-Log
-          path: teammod27-build.log
-          if-no-files-found: ignore
-
+          xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _tunnel_create_remotexpc_multihost$'
+          xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _tunnel_create_rppairing_multihost$'
           mkdir -p ipa/Payload
           cp -R "$APP" ipa/Payload/
           (cd ipa && zip -qry "$GITHUB_WORKSPACE/TEAMMOD27-v1.0.0-build1-unsigned.ipa" Payload)
