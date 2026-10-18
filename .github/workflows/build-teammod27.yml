@@ -1,0 +1,156 @@
+name: Build TEAMMOD27 IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  iphone-build:
+    runs-on: macos-15
+    timeout-minutes: 70
+    steps:
+      - name: Checkout standalone TEAMMOD27
+        uses: actions/checkout@v4
+
+      - name: Read-only checkout of pinned open-source base
+        uses: actions/checkout@v4
+        with:
+          repository: Iowzaza225/3105
+          ref: 4135a56ca48c077e251b149408d2f05246e39d82
+          path: upstream
+          persist-credentials: false
+
+      - name: Select Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d /Applications/Xcode_26.3.app ]; then
+            sudo xcode-select -s /Applications/Xcode_26.3.app/Contents/Developer
+          fi
+          xcodebuild -version
+
+      - name: Reconstruct source in TEAMMOD27 workspace only
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -q upstream/RUIZEN_CLIENT_BUILD10.zip -d generated
+          ROOT="$(find generated -type d -name 'ThreeOneOSFive.xcodeproj' -print -quit | xargs dirname)"
+          test -d "$ROOT/ThreeOneOSFive.xcodeproj"
+          python3 upstream/ci/apply_source_overlay.py "$ROOT" upstream/ci/ruizen_ios27_overlay_delta.b64
+          python3 upstream/ci/apply_pairing_overlay.py "$ROOT" upstream/ci/ruizen_ondevice_pairing_v13.b64
+          python3 ci/brand_teammod27.py "$ROOT"
+          echo "SOURCE_ROOT=$ROOT" >> "$GITHUB_ENV"
+          echo "TEAM_PROJECT=$ROOT/ThreeOneOSFive.xcodeproj" >> "$GITHUB_ENV"
+          plutil -lint "$ROOT/ThreeOneOSFive/Info.plist"
+
+      - name: Generate TEAMMOD27 blue-green brand assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift ci/generate_brand.swift "$SOURCE_ROOT"
+          sips -s format jpeg "$SOURCE_ROOT/ThreeOneOSFive/Assets.xcassets/TeammodIcon.imageset/TeammodIcon.png" \
+            --out "$SOURCE_ROOT/ThreeOneOSFive/Assets.xcassets/HTVLogo.imageset/HTVLogo.jpeg"
+          xcrun swiftc -frontend -parse "$SOURCE_ROOT/ThreeOneOSFive/views/StockLauncherHomeView.swift"
+          xcrun swiftc -frontend -parse "$SOURCE_ROOT/ThreeOneOSFive/helpers/RuizenDeviceReadiness.swift"
+          xcrun swiftc -frontend -parse "$SOURCE_ROOT/ThreeOneOSFive/views/RuizenApplyPreflightView.swift"
+
+      - name: Verify identity and bundle ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,pathlib,plistlib
+          r=pathlib.Path(os.environ["SOURCE_ROOT"])
+          d=plistlib.loads((r/"ThreeOneOSFive/Info.plist").read_bytes())
+          assert d["CFBundleIdentifier"]=="com.apple.mobile.MobileHouseArrest"
+          assert d["CFBundleDisplayName"]=="TEAMMOD27"
+          assert d["HTVLicenseBaseURL"]=="https://hightapi.netlify.app"
+          assert d["HTVLicenseAppID"]=="teammod27"
+          assert d["CFBundleVersion"]=="1"
+          assert d["CFBundleShortVersionString"]=="1.0.0"
+          print("Verified independent TEAMMOD27 app identity")
+          PY
+
+      - name: Stage pinned AirLift binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash "$SOURCE_ROOT/scripts/enable_airlift_macos.sh"
+          test -s "$SOURCE_ROOT/ThirdParty/AirliftFFI.xcframework/ios-arm64/libairlift_ffi.a"
+          shasum -a 256 "$SOURCE_ROOT/ThirdParty/AirliftFFI.xcframework/ios-arm64/libairlift_ffi.a"
+
+      - name: Build unsigned TEAMMOD27 app
+        shell: bash
+        run: |
+          set -eo pipefail
+          xcodebuild -project "$TEAM_PROJECT" -scheme 3105 \
+            -configuration Release -sdk iphoneos \
+            -derivedDataPath "$GITHUB_WORKSPACE/build" \
+            PRODUCT_NAME=TEAMMOD27 CURRENT_PROJECT_VERSION=1 MARKETING_VERSION=1.0.0 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee "$GITHUB_WORKSPACE/teammod27-build.log"
+
+      - name: Verify and package TEAMMOD27 IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find build -type d -name 'TEAMMOD27.app' -print -quit)"
+          test -n "$APP"
+          python3 - "$APP" <<'PY'
+          import pathlib,plistlib,sys
+          root=pathlib.Path(sys.argv[1]);p=root/"Info.plist"
+          d=plistlib.loads(p.read_bytes())
+          assert d["CFBundleIdentifier"]=="com.apple.mobile.MobileHouseArrest"
+          d["CFBundleDisplayName"]="TEAMMOD27"
+          d["CFBundleName"]="TEAMMOD27"
+          d["CFBundleShortVersionString"]="1.0.0"
+          d["CFBundleVersion"]="1"
+          p.write_bytes(plistlib.dumps(d,fmt=plistlib.FMT_BINARY))
+          assert (root/d["CFBundleExecutable"]).is_file()
+          print("IPA identity verified:",d["CFBundleIdentifier"],d["CFBundleVersion"])
+          PY
+          # Verifies that the RPPairing host and RSD bridge are actually linked.
+          xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _al_pairing_run_host$'
+          xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _al_pairing_result_free$'
+          xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _tunnel_create_remotexpc_multihost$'
+          mkdir -p ipa/Payload
+          cp -R "$APP" ipa/Payload/
+          (cd ipa && zip -qry "$GITHUB_WORKSPACE/TEAMMOD27-v1.0.0-build1-unsigned.ipa" Payload)
+          unzip -tq TEAMMOD27-v1.0.0-build1-unsigned.ipa
+
+      - name: Upload TEAMMOD27 IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: TEAMMOD27-unsigned-IPA
+          path: TEAMMOD27-v1.0.0-build1-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload standalone prepared sources
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd "$SOURCE_ROOT" && zip -q -r "$GITHUB_WORKSPACE/TEAMMOD27-Prepared-Source.zip" . -x '*/.DS_Store' '*/__MACOSX/*')
+
+      - name: Store TEAMMOD27 source archive
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TEAMMOD27-Prepared-Source
+          path: TEAMMOD27-Prepared-Source.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload compiler log on error
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TEAMMOD27-Failure-Log
+          path: teammod27-build.log
+          if-no-files-found: ignore
