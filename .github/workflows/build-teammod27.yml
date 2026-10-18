@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feat/teammod27-sandbox-file-check-and-catalog-status
       - fix/teammod27-rsd-port-fallback
 
 permissions:
@@ -48,6 +49,15 @@ jobs:
           echo "SOURCE_ROOT=$ROOT" >> "$GITHUB_ENV"
           echo "TEAM_PROJECT=$ROOT/ThreeOneOSFive.xcodeproj" >> "$GITHUB_ENV"
           plutil -lint "$ROOT/ThreeOneOSFive/Info.plist"
+
+      - name: Add sandbox file checks and HIGHT catalog feedback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ci/stage_safe_diagnostics.py
+          python3 ci/stage_safe_diagnostics.py "$SOURCE_ROOT"
+          xcrun swiftc -frontend -parse "$SOURCE_ROOT/ThreeOneOSFive/views/RuizenApplyPreflightView.swift"
+          xcrun swiftc -frontend -parse "$SOURCE_ROOT/ThreeOneOSFive/views/RepositoryHomeView.swift"
 
       - name: Generate TEAMMOD27 blue-green brand assets
         shell: bash
