@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feat/teammod27-target-access-diagnostic
       - fix/teammod27-connection-state-on-navigation
       - feat/teammod27-sandbox-file-check-and-catalog-status
       - fix/teammod27-rsd-port-fallback
@@ -67,6 +68,15 @@ jobs:
           python3 -m py_compile ci/stage_connection_state.py
           python3 ci/stage_connection_state.py "$SOURCE_ROOT"
           xcrun swiftc -frontend -parse "$SOURCE_ROOT/ThreeOneOSFive/helpers/RuizenDeviceReadiness.swift"
+          xcrun swiftc -frontend -parse "$SOURCE_ROOT/ThreeOneOSFive/views/PatchProjectsView.swift"
+
+      - name: Add read-only patch target permission diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ci/stage_target_access_audit.py
+          python3 ci/stage_target_access_audit.py "$SOURCE_ROOT"
+          xcrun swiftc -frontend -parse "$SOURCE_ROOT/ThreeOneOSFive/views/RuizenApplyPreflightView.swift"
           xcrun swiftc -frontend -parse "$SOURCE_ROOT/ThreeOneOSFive/views/PatchProjectsView.swift"
 
       - name: Generate TEAMMOD27 blue-green brand assets
