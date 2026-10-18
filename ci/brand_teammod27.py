@@ -257,10 +257,10 @@ btext=btext.replace(original,replacement,1)
 # Keep the diagnostic variable at the beginning of the method's lifetime.
 assert btext.count('    NSString *detail = @"";') == 1
 btext=btext.replace('    NSString *detail = @"";',
-                    '    NSString *detail = @"";\\n    NSString *remoteError = @"";'.replace('\\n','\\n'), 1)
+                    '    NSString *detail = @"";' + chr(10) + '    NSString *remoteError = @"";',1)
 assert btext.count('    NSString *remoteError = @"";') == 2
-btext=btext.replace('    NSString *remoteError = @"";\\n    if (error || !adapter || !handshake)'.replace('\\n','\\n'),
-                    '    remoteError = @"";\\n    if (error || !adapter || !handshake)'.replace('\\n','\\n'),1)
+btext=btext.replace('    NSString *remoteError = @"";' + chr(10) + '    if (error || !adapter || !handshake)',
+                    '    remoteError = @"";' + chr(10) + '    if (error || !adapter || !handshake)',1)
 bridge.write_text(btext)
 
 # Remove one stale old-brand instructional message without changing FFI.
