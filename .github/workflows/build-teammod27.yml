@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - fix/teammod27-rsd-port-fallback
 
 permissions:
   contents: read
@@ -118,6 +119,7 @@ jobs:
           xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _al_pairing_run_host$'
           xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _al_pairing_result_free$'
           xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _tunnel_create_remotexpc_multihost$'
+          xcrun nm -gU "$APP/TEAMMOD27" | grep -E ' _tunnel_create_rppairing_multihost$'
           mkdir -p ipa/Payload
           cp -R "$APP" ipa/Payload/
           (cd ipa && zip -qry "$GITHUB_WORKSPACE/TEAMMOD27-v1.0.0-build1-unsigned.ipa" Payload)
