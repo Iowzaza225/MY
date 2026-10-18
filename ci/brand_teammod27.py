@@ -149,5 +149,116 @@ if marker in txt:
         txt=txt[:end]+"\n};"+txt[end+2:]
         display.write_text(txt)
 
+
+# iOS 27 RemotePairing transport correction:
+# 62078 is the lockdown port, not a guaranteed RSD/RemotePairing endpoint.
+# Let the user set the advertised RSD port, defaulting to the commonly observed
+# 49152, and retry raw RPPairing if a RemoteXPC handshake is rejected.
+readiness = source_root / "helpers/RuizenDeviceReadiness.swift"
+rtext = readiness.read_text()
+old_host = '    @Published var targetHost = "10.7.0.1"'
+assert rtext.count(old_host) == 1, "Readiness host declaration changed"
+rtext = rtext.replace(old_host, old_host + '\n    @Published var targetPort = "49152"', 1)
+old_port = '        let path = Self.pairingURL.path\n        isChecking = true'
+assert rtext.count(old_port) == 1, "Probe input setup changed"
+rtext = rtext.replace(old_port, '        let path = Self.pairingURL.path\n        let port = Int(targetPort.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0\n        isChecking = true', 1)
+old_probe = 'RuizenNativeBridge.probePairing(atPath: path, host: host, port: 62078)'
+assert rtext.count(old_probe) == 1, "Original fixed lockdown port not found"
+rtext = rtext.replace(old_probe, 'RuizenNativeBridge.probePairing(atPath: path, host: host, port: port)', 1)
+readiness.write_text(rtext)
+
+preflight = source_root / "views/RuizenApplyPreflightView.swift"
+ptext = preflight.read_text()
+host_change = '''                                .onChange(of: readiness.targetHost) { _ in
+                                    readiness.invalidate(reason: "เปลี่ยนปลายทางแล้ว ต้องตรวจ Pairing / Tunnel / RSD ใหม่")
+                                }
+'''
+assert ptext.count(host_change) == 1, "RSD host input block changed"
+new_port_field = '''                            TextField("Remote Pairing / RSD Port (เช่น 49152)", text: $readiness.targetPort)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.roundedBorder)
+                                .onChange(of: readiness.targetPort) { _ in
+                                    readiness.invalidate(reason: "เปลี่ยนพอร์ตแล้ว ต้องตรวจ Tunnel อีกครั้ง")
+                                }
+                            Text("พอร์ต 62078 เป็น Lockdown ไม่ใช่พอร์ต RSD เสมอไป • ค่า 49152 เป็นค่าเริ่มต้นสำหรับทดสอบ")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+'''
+ptext = ptext.replace(host_change,host_change+new_port_field,1)
+old_label = 'Text("RSD endpoint: \\(readiness.targetHost):62078")'
+assert ptext.count(old_label) == 1, "Old endpoint label changed"
+ptext = ptext.replace(old_label,'Text("Remote Pairing/RSD: \\(readiness.targetHost):\\(readiness.targetPort)")',1)
+preflight.write_text(ptext)
+
+bridge=source_root/"native/RuizenNativeBridge.m"
+btext=bridge.read_text()
+needle = '    RZCreateTunnel createTunnel = (RZCreateTunnel)dlsym(RTLD_DEFAULT, "tunnel_create_remotexpc_multihost");'
+assert btext.count(needle)==1, "RemoteXPC native function changed"
+btext=btext.replace(needle, needle + '\n    RZCreateTunnel createRaw = (RZCreateTunnel)dlsym(RTLD_DEFAULT, "tunnel_create_rppairing_multihost");',1)
+
+original='''    void *adapter = NULL;
+    void *handshake = NULL;
+    error = createTunnel((const struct sockaddr *)&address, sizeof(address),
+                         "TEAMMOD27", pairing, NULL, NULL, NULL, 0,
+                         &failureKind, &adapter, &handshake);
+    freePairing(pairing);
+    if (error || !adapter || !handshake) {
+        NSString *ffiDetail = RZMessage(error, freeError);
+        detail = [NSString stringWithFormat:@"%@: %@", RZFailureExplanation(failureKind), ffiDetail];
+        if (handshake) freeHandshake(handshake);
+        if (adapter) freeAdapter(adapter);
+        goto finish;
+    }
+    tunnel = YES; // Tunnel constructor performed pair-verify and RSD handshake.
+'''
+assert btext.count(original)==1, "Native Tunnel invocation changed"
+replacement='''    void *adapter = NULL;
+    void *handshake = NULL;
+    error = createTunnel((const struct sockaddr *)&address, sizeof(address),
+                         "TEAMMOD27", pairing, NULL, NULL, NULL, 0,
+                         &failureKind, &adapter, &handshake);
+    NSString *remoteError = @"";
+    if (error || !adapter || !handshake) {
+        remoteError = [NSString stringWithFormat:@"%@: %@",
+                       RZFailureExplanation(failureKind), RZMessage(error, freeError)];
+        if (handshake) freeHandshake(handshake);
+        if (adapter) freeAdapter(adapter);
+        handshake = NULL;
+        adapter = NULL;
+        if (createRaw) {
+            failureKind = 0;
+            error = createRaw((const struct sockaddr *)&address, sizeof(address),
+                              "TEAMMOD27", pairing, NULL, NULL, NULL, 0,
+                              &failureKind, &adapter, &handshake);
+            if (error || !adapter || !handshake) {
+                NSString *rawError = [NSString stringWithFormat:@"%@: %@",
+                                       RZFailureExplanation(failureKind),
+                                       RZMessage(error, freeError)];
+                detail = [NSString stringWithFormat:@"RemoteXPC: %@ | Raw RPPairing: %@",
+                          remoteError, rawError];
+                if (handshake) freeHandshake(handshake);
+                if (adapter) freeAdapter(adapter);
+                freePairing(pairing);
+                goto finish;
+            }
+        } else {
+            detail = [NSString stringWithFormat:@"RemoteXPC: %@ | Raw RPPairing ไม่พร้อม", remoteError];
+            freePairing(pairing);
+            goto finish;
+        }
+    }
+    freePairing(pairing);
+    tunnel = YES; // Successful native tunnel and authenticated RSD handshake.
+'''
+btext=btext.replace(original,replacement,1)
+bridge.write_text(btext)
+
+# Remove one stale old-brand instructional message without changing FFI.
+preflight_text=preflight.read_text().replace("ให้กลับเข้า RUIZEN", "ให้กลับเข้า TEAMMOD27")
+preflight.write_text(preflight_text)
+print("TEAMMOD27 iOS 27 RSD port correction and Raw RPPairing fallback staged.")
+
 print("TEAMMOD27 branding, version and shared key identity configured.")
 print("Bundle ID preserved:",info["CFBundleIdentifier"])
