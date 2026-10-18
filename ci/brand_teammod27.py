@@ -83,5 +83,59 @@ design.write_text(s)
 # The original Xcode scheme is retained to preserve references to the
 # original PBX target (3105); only the product and the resulting IPA change.
 # The brand icon is replaced by the separate macOS art generator.
+
+# Replace the legacy launcher with a TEAMMOD27-branded entry point.
+launcher=source_root/"views/StockLauncherHomeView.swift"
+launcher.write_text("""import SwiftUI
+
+struct StockLauncherHomeView: View {
+    let onEnter: () -> Void
+
+    var body: some View {
+        ZStack {
+            HTVScreenBackground()
+            ScrollView {
+                VStack(spacing: 22) {
+                    Spacer(minLength: 32)
+                    Image("TeammodBanner")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 640)
+                        .accessibilityLabel("TEAMMOD27")
+                    Text("TEAMMOD27")
+                        .font(.system(size: 36, weight: .black, design: .rounded))
+                        .foregroundStyle(AppTheme.brandGradient)
+                    Text("DEVICE TOOLS · AIRLIFT / RSD")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text("ตรวจสอบการเชื่อมต่ออุปกรณ์และจัดการไฟล์ที่ได้รับอนุญาต")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Button(action: onEnter) {
+                        Label("เข้าสู่ TEAMMOD27", systemImage: "arrow.right.circle.fill")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .background(AppTheme.brandGradient, in: RoundedRectangle(cornerRadius: 16))
+                    Spacer(minLength: 24)
+                }
+                .padding(.horizontal, 24)
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+""",encoding="utf8")
+
+repo_view=source_root/"views/RepositoryHomeView.swift"
+contents=repo_view.read_text()
+if "Image(\"TeammodBanner\")" not in contents:
+    contents=contents.replace("                        brandHeader\\n", "                        brandHeader\\n                        Image(\"TeammodBanner\").resizable().scaledToFit().frame(maxWidth: 610)\\n",1)
+repo_view.write_text(contents)
+
 print("TEAMMOD27 branding, version and shared key identity configured.")
 print("Bundle ID preserved:",info["CFBundleIdentifier"])
