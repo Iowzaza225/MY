@@ -137,5 +137,17 @@ if "Image(\"TeammodBanner\")" not in contents:
     contents=contents.replace("                        brandHeader\\n", "                        brandHeader\\n                        Image(\"TeammodBanner\").resizable().scaledToFit().frame(maxWidth: 610)\\n",1)
 repo_view.write_text(contents)
 
+
+# Repair a pre-existing C syntax typo in the supplied source archive.
+display=source_root/"helpers/DisplayIdentity.m"
+txt=display.read_text()
+marker="static const uint8_t kAttributionSeed[] = {"
+if marker in txt:
+    start=txt.index(marker)
+    end=txt.find("\n}",start)
+    if end>=0 and not txt[end+2:end+3]==";":
+        txt=txt[:end]+"\n};"+txt[end+2:]
+        display.write_text(txt)
+
 print("TEAMMOD27 branding, version and shared key identity configured.")
 print("Bundle ID preserved:",info["CFBundleIdentifier"])
